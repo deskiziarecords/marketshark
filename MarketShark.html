@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>MarketShark | Token Protocol Analyzer</title>
+<style>
+:root{--bg:#1e1e1e;--panel:#252526;--txt:#ccc;--blue:#569cd6;--green:#6a9955;--red:#f44747;--yellow:#dcdcaa;--border:#3e3e42;--font:'Consolas','Courier New',monospace}
+body{margin:0;background:var(--bg);color:var(--txt);font-family:var(--font);height:100vh;display:flex;flex-direction:column;overflow:hidden;font-size:12px}
+header{background:#333;padding:5px 10px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)}
+.filter-input{background:var(--bg);border:1px solid var(--border);color:#fff;padding:4px 8px;width:280px;font-family:inherit}
+.btn{background:#3e3e42;border:1px solid #555;color:#fff;padding:4px 12px;cursor:pointer;font-size:11px}
+.btn:hover{background:#505050}.btn.stop{background:var(--red);border-color:darkred}
+#main{display:flex;flex:1;overflow:hidden}
+#list{width:65%;display:flex;flex-direction:column;border-right:1px solid var(--border)}
+.hdr{display:grid;grid-template-columns:60px 140px 180px 140px 1fr;background:#2d2d30;padding:4px;font-weight:bold;border-bottom:1px solid var(--border)}
+#packets{flex:1;overflow-y:auto}
+.row{display:grid;grid-template-columns:60px 140px 180px 140px 1fr;padding:2px 4px;cursor:pointer;border-bottom:1px solid #2d2d30}
+.row:hover{background:#3e3e42}.row.sel{background:#264f78}
+.tok-b{color:#4ec9b0}.tok-r{color:#ce9178}.tok-n{color:#808080}
+#details{width:35%;display:flex;flex-direction:column;background:var(--panel)}
+#tree{padding:8px;overflow-y:auto;flex:2;border-bottom:1px solid var(--border)}
+#hex{flex:1;background:#000;color:var(--green);padding:8px;overflow-y:auto;white-space:pre;font-size:10px;border-top:1px solid var(--border)}
+footer{background:#007acc;color:#fff;padding:2px 10px;font-size:10px;display:flex;justify-content:space-between}
+.tree-r{font-weight:bold;margin:6px 0 3px 0;color:var(--blue)}
+.tree-n{margin-left:15px;margin-top:1px}.f-n{color:#9cdcfe}.f-v{color:#ce9178}
+.badge{display:inline-block;padding:1px 5px;border-radius:3px;font-size:10px;margin:1px 0}
+.b-h{background:rgba(106,153,85,.3);color:var(--green)}.b-l{background:rgba(244,71,71,.3);color:var(--red)}.b-n{background:rgba(128,128,128,.3)}
+#modal{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--panel);border:1px solid var(--yellow);padding:15px;z-index:100;width:400px}
+</style>
+</head>
+<body>
+<header>
+ <div style="font-weight:bold;color:#fff">🦈 MarketShark</div>
+ <input class="filter-input" id="filt" placeholder="Filter: tok.seq, conf<0.5, winrate>0.7">
+ <button class="btn" onclick="toggle()" id="btn">Start Stream</button>
+ <button class="btn" onclick="clear()">Clear</button>
+</header>
+<div id="main">
+ <div id="list"><div class="hdr"><div>No.</div><div>Time</div><div>Window (30)</div><div>Pattern</div><div>Conf → Action</div></div><div id="packets"></div></div>
+ <div id="details"><div id="tree"><div style="color:#666;padding:20px;text-align:center">Select a window</div></div><div id="hex">[Embedding Vector]</div></div>
+</div>
+<div id="modal"><h4 style="color:var(--yellow);margin:0 0 10px">🧠 LLM Consultation</h4><div id="mcont"></div><button class="btn" onclick="document.getElementById('modal').style.display='none'">Dismiss</button></div>
+<footer><div id="stat">🟢 Ready</div><div><span id="sig">Signal: WAIT</span></div></footer>
+<script>
+let run=false, cnt=0, data=[], filt="";
+const API=""; // Relative to Flask server
+
+async function fetchStream(){const r=await fetch(API+'/stream');return await r.json()}
+async function fetchSim(seq){const r=await fetch(API+'/similar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tokens:seq})});return(await r.json()).matches}
+async function fetchDec(seq,price){const r=await fetch(API+'/decision',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tokens:seq,price})});return await r.json()}
+
+async function loop(){
+ const rows=await fetchStream();let idx=30;
+ while(run && idx<rows.length){
+  const win=rows.slice(idx-30,idx).map(r=>r.token).join('');
+  const dec=await fetchDec(win,rows[idx-1].close);
+  const sim=await fetchSim(win);
+  const pkt={no:cnt++,time:rows[idx-1].timestamp,tokens:win,pattern:dec.pattern,confidence:dec.confidence,action:dec.action,price:rows[idx-1].close,sim,dec};
+  data.push(pkt);if(match(pkt))render(pkt);
+  idx++;await new Promise(r=>setTimeout(r,500));
+ }
+}
+function toggle(){run=!run;const b=document.getElementById('btn');if(run){b.innerText='Stop';b.classList.add('stop');document.getElementById('stat').innerHTML='🟢 Streaming...';loop()}else{b.innerText='Start';b.classList.remove('stop');document.getElementById('stat').innerText='⏸️ Paused'}}
+function clear(){data=[];document.getElementById('packets').innerHTML='';cnt=0}
+function match(p){if(!filt)return true;const f=filt.toLowerCase();return p.tokens.toLowerCase().includes(f)||String(p.confidence).includes(f)}
+function render(p){const d=document.createElement('div');d.className='row';d.onclick=()=>select(d,p);
+ const cls=p.tokens[0].match(/[VWX]/)?'tok-b':p.tokens[0].match(/[ZRS]/)?'tok-r':'tok-n';
+ d.innerHTML=`<div>${p.no}</div><div>${p.time}</div><div><span class="${cls}">${p.tokens.slice(0,10)}</span>...</div><div>${p.pattern?p.pattern.pattern:'none'}</div><div style="color:${p.confidence>0.7?'var(--green)':'var(--red)'}">${p.confidence.toFixed(2)} → ${p.action}</div>`;
+ document.getElementById('packets').appendChild(d);document.getElementById('packets').scrollTop=9e9}
+async function select(el,p){document.querySelectorAll('.row').forEach(r=>r.classList.remove('selected'));el.classList.add('selected');
+ const t=document.getElementById('tree');
+ t.innerHTML=`<div class="tree-r">Window #${p.no}</div><div class="tree-n"><span class="f-n">Price:</span> <span class="f-v">${p.price.toFixed(5)}</span></div><div class="tree-r">Vector DB</div>`;
+ if(p.sim)p.sim.forEach((m,i)=>{const cl=m.cluster==='high'?'b-h':m.cluster==='low'?'b-l':'b-n';t.innerHTML+=`<div class="tree-n"><span class="f-n">${i+1}.</span> <span class="f-v">"${m.pattern}"</span> <span class="badge ${cl}">WR:${(m.win_rate*100).toFixed(0)}% RR:${m.avg_rr}</span></div>`});
+ else t.innerHTML+=`<div class="tree-n" style="opacity:.7">No matches</div>`;
+ t.innerHTML+=`<div class="tree-r">Decision</div><div class="tree-n"><span class="f-n">Source:</span> <span class="f-v">${p.dec.source}</span></div><div class="tree-n"><span class="f-n">Conf:</span> <span class="f-v">${p.confidence.toFixed(3)}</span></div><div class="tree-n"><span class="f-n">Action:</span> <span class="f-v">${p.dec.action}</span></div>`;
+ document.getElementById('sig').innerText=`Signal: ${p.dec.action}`;
+ if(p.dec.source==='ollama'||p.dec.source==='cloud'){document.getElementById('mcont').innerHTML=`<strong>${p.dec.source.toUpperCase()}</strong><br>Conf: ${(p.dec.confidence*100).toFixed(1)}%<br><small>${p.dec.reasoning}</small>`;document.getElementById('modal').style.display='block'}
+ document.getElementById('hex').innerText=`[Sim: ${p.sim?p.sim.map(s=>s.similarity.toFixed(3)).join(', '):'N/A'}]`}
+document.getElementById('filt').addEventListener('input',e=>{filt=e.target.value;document.getElementById('packets').innerHTML='';data.forEach(p=>{if(match(p))render(p)})})
+</script></body></html>
