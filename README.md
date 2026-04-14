@@ -1,5 +1,5 @@
 # marketshark
-[https://github.com/deskiziarecords/marketshark/blob/main/market-shark.jpg?raw=true]
+(https://github.com/deskiziarecords/marketshark/blob/main/market-shark.jpg?raw=true)
 m shark
 ``` text
 MarketShark_EURUSD/
