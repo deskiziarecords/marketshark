@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+"""
+tokenize_candles.py
+Converts OHLCV CSV → A-Z token sequences using ATR-normalized candle geometry.
+Output: Adds 'token' column, saves as <input>_tokenized.csv
+"""
+import argparse
+import os
+import sys
+import pandas as pd
+import numpy as np
+
+def tokenize_candles(input_csv, output_csv=None, neutral_atr_mult=0.15, atr_period=14):
+    print(f" Loading {input_csv}...")
+    df = pd.read_csv(input_csv, parse_dates=["timestamp"])
+    df = df.sort_values("timestamp").reset_index(drop=True)
+    
+    if "volume" not in df.columns:
+        df["volume"] = 0  # Fallback if missing
+    
+    print(" Computing ATR & candle geometry...")
+    # 1. True Range & ATR
+    prev_close = df["close"].shift(1)
+    tr = np.maximum(
+        df["high"] - df["low"],
+        np.maximum(
+            (df["high"] - prev_close).abs(),
+            (df["low"] - prev_close).abs()
+        )
+    )
+    atr = tr.rolling(window=atr_period, min_periods=1).mean()
+    atr = atr.replace(0, np.nan).ffill().fillna(1e-5)  # Prevent div/zero
+    
+    # 2. Candle Geometry
+    body = df["close"] - df["open"]
+    upper_wick = df["high"] - df[["open", "close"]].max(axis=1)
+    lower_wick = df[["open", "close"]].min(axis=1) - df["low"]
+    
+    # 3. ATR-Normalized Features
+    norm_body_abs = body.abs() / atr
+    norm_wick_diff = (upper_wick - lower_wick) / atr
+    
+    print(" Quantizing to 3D feature space...")
+    # 1. Direction: -1 (Bear), 0 (Neutral), 1 (Bull)
+    dir_code = np.where(norm_body_abs < neutral_atr_mult, 0,
+                        np.where(body > 0, 1, -1))
+    
+    # 2. Body Strength: 0=Small, 1=Medium, 2=Large
+    p33_s, p66_s = np.nanpercentile(norm_body_abs, [33, 66])
+    strength_code = np.zeros_like(norm_body_abs, dtype=int)
+    strength_code[norm_body_abs >= p33_s] = 1
+    strength_code[norm_body_abs >= p66_s] = 2
+    
+    # 3. Wick Asymmetry: 0=Lower-Dom, 1=Balanced, 2=Upper-Dom
+    p33_w, p66_w = np.nanpercentile(norm_wick_diff, [33, 66])
+    wick_code = np.zeros_like(norm_wick_diff, dtype=int)
+    wick_code[norm_wick_diff >= p33_w] = 1
+    wick_code[norm_wick_diff >= p66_w] = 2
+    
+    # 4. Composite Index (3x3x3 = 27 states → clip to 26 for A-Z)
+    dir_idx = dir_code + 1      # Maps to 0,1,2
+    wick_idx = wick_code        # Already 0,1,2
+    idx = dir_idx * 9 + strength_code * 3 + wick_idx
+    idx = np.clip(idx, 0, 25)
+    
+    # 5. Map to Letters
+    df["token"] = np.array(list("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))[idx]
+    
+    # Save
+    if output_csv is None:
+        base, ext = os.path.splitext(input_csv)
+        output_csv = f"{base}_tokenized{ext}"
+        
+    df.to_csv(output_csv, index=False)
+    
+    # Validation
+    unique_tokens = df["token"].nunique()
+    print(f" Saved {len(df):,} candles to {output_csv}")
+    print(f" Unique tokens: {unique_tokens}/26 | Most common: {df['token'].mode()[0]}")
+    return df
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Tokenize OHLCV candles to A-Z sequences")
+    parser.add_argument("input", help="Path to input CSV (timestamp,open,high,low,close,volume)")
+    parser.add_argument("-o", "--output", help="Output CSV path (default: <input>_tokenized.csv)")
+    parser.add_argument("--neutral-atr", type=float, default=0.15, help="Neutral threshold as % of ATR (default: 0.15)")
+    parser.add_argument("--atr-period", type=int, default=14, help="ATR rolling window (default: 14)")
+    args = parser.parse_args()
+    
+    if not os.path.exists(args.input):
+        print(f"[ERROR] File not found: {args.input}")
+        sys.exit(1)
+        
+    tokenize_candles(args.input, args.output, args.neutral_atr, args.atr_period)
