@@ -1,4 +1,6 @@
 # Basic fetch (1 year)
+
+fetch_forex.py -a GBP_USD -t 1h -d 30 -o mydata.csv
 python fetch_dukascopy.py --symbol EURUSD --start 2024-01-01 --end 2024-12-31
 
 # Fetch 7 years (resume-safe)
