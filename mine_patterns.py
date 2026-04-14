@@ -42,7 +42,7 @@ def run(csv_path):
     print(" Indexing ChromaDB...")
     cnt = 0
     for pat, s in db.items():
-        if s["count"] >= 10:  # Minimum occurrence filter
+        if s["count"] >= 1:  # Minimum occurrence filter
             wr = s["wins"] / s["count"]
             store_pattern(pat, {
                 "length": len(pat),
