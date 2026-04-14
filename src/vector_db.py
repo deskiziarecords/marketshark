@@ -1,4 +1,41 @@
-#!/usr/bin/env python3
+import chromadb
+from chromadb.config import Settings
+import os
+from embeddings import embed_sequence
+
+CHROMA_PATH = os.path.join(os.getcwd(), 'chroma_db')
+COLLECTION_NAME = "eurusd_patterns"
+
+def get_client():
+    os.makedirs(CHROMA_PATH, exist_ok=True)
+    return chromadb.PersistentClient(path=CHROMA_PATH, settings=Settings(anonymized_telemetry=False))
+
+def get_collection():
+    client = get_client()
+    return client.get_or_create_collection(name=COLLECTION_NAME, metadata={"hnsw:space": "cosine"})
+
+def store_pattern(pattern: str, meta: dict):
+    collection = get_collection()
+    collection.upsert(ids=[pattern], embeddings=[embed_sequence(pattern)], metadatas=[{**meta, "pattern": pattern}])
+
+def query_similar(token_window: str, n_results: int = 5, min_win_rate: float = 0.0) -> list[dict]:
+    collection = get_collection()
+    results = collection.query(
+        query_embeddings=[embed_sequence(token_window)],
+        n_results=n_results * 2,
+        where={"win_rate": {"$gte": min_win_rate}} if min_win_rate > 0 else None
+    )
+    matches = []
+    if results.get('metadatas') and results['metadatas'][0]:
+        for i, meta in enumerate(results['metadatas'][0]):
+            sim = 1.0 - min(results['distances'][0][i], 1.0)
+            matches.append({
+                "pattern": meta["pattern"], "similarity": round(sim, 4),
+                "win_rate": meta.get("win_rate", 0), "avg_rr": meta.get("avg_rr", 0),
+                "count": meta.get("count", 0), "cluster": meta.get("cluster", "neutral")
+            })
+    matches.sort(key=lambda x: x["similarity"] * 0.6 + x["win_rate"] * 0.4, reverse=True)
+    return matches[:n_results]#!/usr/bin/env python3
 """
 vector_db.py
 ChromaDB integration for pattern storage and similarity search.
