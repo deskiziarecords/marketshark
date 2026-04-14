@@ -76,4 +76,35 @@ async function select(el,p){document.querySelectorAll('.row').forEach(r=>r.class
  if(p.dec.source==='ollama'||p.dec.source==='cloud'){document.getElementById('mcont').innerHTML=`<strong>${p.dec.source.toUpperCase()}</strong><br>Conf: ${(p.dec.confidence*100).toFixed(1)}%<br><small>${p.dec.reasoning}</small>`;document.getElementById('modal').style.display='block'}
  document.getElementById('hex').innerText=`[Sim: ${p.sim?p.sim.map(s=>s.similarity.toFixed(3)).join(', '):'N/A'}]`}
 document.getElementById('filt').addEventListener('input',e=>{filt=e.target.value;document.getElementById('packets').innerHTML='';data.forEach(p=>{if(match(p))render(p)})})
-</script></body></html>
+</script>
+<div id="reward-panel" style="background:#0a192f; padding:10px; border-top:1px solid #333; display:grid; grid-template-columns:repeat(5,1fr); gap:8px; font-size:11px; color:#64ffda;">
+  <div>🟢 Win Rate: <span id="r-wr" style="color:#fff">0.0%</span></div>
+  <div>💰 Avg Reward: <span id="r-reward" style="color:#fff">0.00</span></div>
+  <div>🎯 Threshold: <span id="r-thresh" style="color:#ffd700">0.75</span></div>
+  <div>📊 Trades: <span id="r-count" style="color:#fff">0</span></div>
+  <div>📈 P&L: <span id="r-pnl" style="color:#00ff9d">+0.00%</span></div>
+</div>
+
+<script>
+async function updateRewardPanel() {
+  try {
+    const res = await fetch('/reward_stats');
+    const data = await res.json();
+    document.getElementById('r-wr').innerText = (data.win_rate * 100).toFixed(1) + '%';
+    document.getElementById('r-reward').innerText = data.avg_reward.toFixed(2);
+    document.getElementById('r-count').innerText = data.total;
+    document.getElementById('r-pnl').innerText = (data.pnl_pct >= 0 ? '+' : '') + (data.pnl_pct * 100).toFixed(2) + '%';
+    
+    // Fetch threshold from last decision
+    const decRes = await fetch('/decision', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({tokens:'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', price:1.0})
+    });
+    const dec = await decRes.json();
+    document.getElementById('r-thresh').innerText = dec.threshold;
+  } catch(e) { console.warn('Reward panel update failed', e); }
+}
+setInterval(updateRewardPanel, 10000);
+updateRewardPanel();
+</script>
+</body></html>
