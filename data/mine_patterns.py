@@ -5,13 +5,13 @@ import sys
 import pandas as pd
 from collections import defaultdict
 
-# 🔑 FIX: Make 'src/' visible to Python
+# FIX: Make 'src/' visible to Python
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src'))
 
 from vector_db import store_pattern
 
 def run(csv_path):
-    print("📖 Loading CSV...")
+    print("Loading CSV...")
     if not os.path.exists(csv_path):
         print(f"[ERROR] File not found: {csv_path}")
         sys.exit(1)
@@ -27,7 +27,7 @@ def run(csv_path):
     tokens = df["token"].fillna("").str.cat()
     db = defaultdict(lambda: {"count": 0, "wins": 0, "total_rr": 0.0})
     
-    print("⛏️ Mining patterns (3, 5, 7-length windows)...")
+    print(" Mining patterns (3, 5, 7-length windows)...")
     for w in [3, 5, 7]:
         for i in range(len(tokens) - w):
             pat = tokens[i:i+w]
@@ -39,7 +39,7 @@ def run(csv_path):
             # RR approximation: 8 pip SL, 16 pip TP
             db[pat]["total_rr"] += (2.0 if ret >= 16 else (-1.0 if ret <= -8 else ret / 8))
             
-    print("💾 Indexing ChromaDB...")
+    print(" Indexing ChromaDB...")
     cnt = 0
     for pat, s in db.items():
         if s["count"] >= 10:  # Minimum occurrence filter
@@ -52,7 +52,7 @@ def run(csv_path):
                 "cluster": "high" if wr > 0.7 else ("low" if wr < 0.55 else "neutral")
             })
             cnt += 1
-    print(f"✅ Indexed {cnt} patterns into local VectorDB. Ready for MarketShark.")
+    print(f" Indexed {cnt} patterns into local VectorDB. Ready for MarketShark.")
 
 if __name__ == "__main__":
     # Default to data/ folder, or use CLI arg
