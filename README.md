@@ -1,5 +1,5 @@
 # marketshark
-(https://github.com/deskiziarecords/marketshark/blob/main/market-shark.jpg?raw=true)
+![MARKETSHARK](https://github.com/deskiziarecords/marketshark/blob/main/market-shark.jpg?raw=true)
 m shark
 ``` text
 MarketShark_EURUSD/
@@ -89,7 +89,7 @@ Inspired by Wireshark's packet analysis paradigm, MarketShark renders market mic
 
 ##  System Architecture
 
-```
+``` TEXT
 ┌─────────────────────────────────────────────────────────────────┐
 │                        MarketShark UI                           │
 │              (Wireshark-Style Token Stream Viewer)              │
