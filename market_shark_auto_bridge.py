@@ -4,6 +4,9 @@ import time
 import pandas as pd
 import numpy as np
 from datetime import datetime
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Fix import paths for src/ directory
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -14,6 +17,7 @@ try:
     from vector_db import query_similar
     from reward_system import log_trade, get_adaptive_threshold
     from tokenizer import tokenize_candle
+    from broker_bitget import BitgetBroker
 except ImportError as e:
     print(f" Import Error: {e}")
     sys.exit(1)
@@ -144,21 +148,52 @@ class MarketSharkAutoTrader:
 
 # --- BOOTSTRAP: RUNNING THE BRIDGE ---
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="MarketShark Auto-Bridge")
+    parser.add_argument("--live", action="store_true", help="Connect to Bitget for live data/execution")
+    args = parser.parse_args()
+
     print("""
     SHARK BRIDGE ACTIVATED
     Connecting Token Stream -> Vector DB -> Risk Gate -> Broker
     """)
     
-    broker = MockBroker()
-    trader = MarketSharkAutoTrader(broker)
-    
-    # Load some sample data to simulate a stream
-    csv_path = os.path.join(CURRENT_DIR, "data", "eurusd_1min_tokenized.csv")
-    if os.path.exists(csv_path):
-        print(f" [BRIDGE] Simulating live stream from {csv_path}...")
-        df = pd.read_csv(csv_path).tail(50)
-        for _, row in df.iterrows():
-            trader.process_candle(row.to_dict())
-            time.sleep(0.1) # Simulate time gap
+    if args.live:
+        print(" [MODE] LIVE BITGET CONNECTION")
+        # In a real scenario, use python-dotenv here
+        key = os.getenv("BITGET_API_KEY")
+        secret = os.getenv("BITGET_SECRET")
+        pw = os.getenv("BITGET_PASSPHRASE")
+        
+        if not key or not secret:
+            print(" [ERROR] Missing Bitget credentials! Set BITGET_API_KEY, BITGET_SECRET, and BITGET_PASSPHRASE.")
+            sys.exit(1)
+            
+        broker = BitgetBroker(api_key=key, secret=secret, passphrase=pw, is_demo=True)
+        trader = MarketSharkAutoTrader(broker)
+        
+        symbol = os.getenv("BITGET_SYMBOL", "BTC/USDT")
+        
+        while True:
+            print(f"\n [LIVE] Fetching latest {symbol} candle...")
+            df = broker.get_latest_candles(symbol=symbol, timeframe="1m", limit=1)
+            if df is not None and not df.empty:
+                trader.process_candle(df.iloc[0].to_dict())
+            
+            # Wait for next minute
+            time.sleep(60)
     else:
-        print(" [ERROR] No data found to simulate stream. Please run tokenize_candles.py first.")
+        print(" [MODE] SIMULATION (CSV)")
+        broker = MockBroker()
+        trader = MarketSharkAutoTrader(broker)
+        
+        # Load some sample data to simulate a stream
+        csv_path = os.path.join(CURRENT_DIR, "data", "eurusd_1min_tokenized.csv")
+        if os.path.exists(csv_path):
+            print(f" [BRIDGE] Simulating live stream from {csv_path}...")
+            df = pd.read_csv(csv_path).tail(50)
+            for _, row in df.iterrows():
+                trader.process_candle(row.to_dict())
+                time.sleep(0.1) # Simulate time gap
+        else:
+            print(" [ERROR] No data found to simulate stream. Please run tokenize_candles.py first.")
