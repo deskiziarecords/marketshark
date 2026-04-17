@@ -57,13 +57,16 @@ def health():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+from flask import Response
+
 @app.route("/stream")
 def stream():
     try:
         if not os.path.exists(CONFIG["csv_path"]):
             return jsonify({"error": "Tokenized CSV not found"}), 404
         df = pd.read_csv(CONFIG["csv_path"], parse_dates=["timestamp"])
-        return df.tail(200).to_json(orient="records", date_format="iso")
+        json_data = df.tail(200).to_json(orient="records", date_format="iso")
+        return Response(json_data, mimetype='application/json')
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

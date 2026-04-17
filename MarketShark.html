@@ -44,12 +44,22 @@ footer{background:#007acc;color:#fff;padding:2px 10px;font-size:10px;display:fle
 let run=false, cnt=0, data=[], filt="";
 const API=""; // Relative to Flask server
 
-async function fetchStream(){const r=await fetch(API+'/stream');return await r.json()}
-async function fetchSim(seq){const r=await fetch(API+'/similar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tokens:seq})});return(await r.json()).matches}
-async function fetchDec(seq,price){const r=await fetch(API+'/decision',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tokens:seq,price})});return await r.json()}
+async function fetchStream(){
+ try{const r=await fetch(API+'/stream');if(!r.ok)throw new Error('Stream fetch failed');return await r.json()}
+ catch(e){document.getElementById('stat').innerText='🔴 Error: '+e.message;return[]}
+}
+async function fetchSim(seq){
+ try{const r=await fetch(API+'/similar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tokens:seq})});return(await r.json()).matches}
+ catch(e){return[]}
+}
+async function fetchDec(seq,price){
+ try{const r=await fetch(API+'/decision',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tokens:seq,price})});return await r.json()}
+ catch(e){return{action:'WAIT',confidence:0,source:'error'}}
+}
 
 async function loop(){
- const rows=await fetchStream();let idx=30;
+ const rows=await fetchStream();if(rows.length===0){run=false;return}
+ let idx=30;
  while(run && idx<rows.length){
   const win=rows.slice(idx-30,idx).map(r=>r.token).join('');
   const dec=await fetchDec(win,rows[idx-1].close);
