@@ -29,8 +29,8 @@ class OHLCFileCarver:
         prices = df['close'].values
         # Simple rolling min/max as boundary proxies
         roll = 20
-        headers = np.where((prices < np.roll(prices, roll)) & (prices < np.roll(prices, -roll))[0]
-        footers = np.where((prices > np.roll(prices, roll)) & (prices > np.roll(prices, -roll))[0]
+        headers = np.where((prices < np.roll(prices, roll)) & (prices < np.roll(prices, -roll)))[0]
+        footers = np.where((prices > np.roll(prices, roll)) & (prices > np.roll(prices, -roll)))[0]
         return headers.tolist(), footers.tolist()
 
     def carve_zones(self, df: pd.DataFrame, min_duration: int = 15) -> List[CarvedZone]:

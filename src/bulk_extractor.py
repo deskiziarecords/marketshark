@@ -5,6 +5,7 @@ Identifies micro-structural artifacts without full context parsing.
 """
 import pandas as pd
 import numpy as np
+from collections import defaultdict
 from typing import Dict, List, Callable
 from concurrent.futures import ProcessPoolExecutor
 import warnings
