@@ -14,7 +14,7 @@ stores patterns in a local vector database, and uses LLM fallback for low-confid
 
 ---
 
-## 🦈 Overview
+## 🦈Overview
 
 MarketShark is a **local-first, asset-isolated trading intelligence system** that treats market data as a language. Instead of analyzing floating-point OHLCV values directly, the system:
 
@@ -48,7 +48,7 @@ marketshark/
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Install Dependencies
 ```bash
@@ -74,7 +74,7 @@ python tests/smoke_test.py
 
 ---
 
-## 🛠 Features
+## Features
 
 - **Vector Similarity Search**: Powered by ChromaDB for sub-50ms pattern matching.
 - **Forensic Suite**:
@@ -87,6 +87,4 @@ python tests/smoke_test.py
 
 ---
 
-## 📜 License
 
-MIT License - See [LICENSE](LICENSE) for details.
