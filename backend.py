@@ -182,7 +182,7 @@ def forensic_scan():
     results["zones"] = FORENSICS["carver"].carve_zones(df)
     results["clusters"] = FORENSICS["clusterer"].cluster_by_token_sequence(df)
     results["signatures"] = FORENSICS["scanner"].scan_signatures(df)
-    results["features"] = FORENSICS["extractor"].extract_parallel(df, chunk_size=len(df))
+    results["features"] = {k: v.to_dict() for k, v in FORENSICS["extractor"].extract_parallel(df, chunk_size=len(df)).items()}
     results["artifacts"] = [a.__dict__ for a in FORENSICS["memory"].artifacts]
     
     return jsonify(results)
