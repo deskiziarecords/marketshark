@@ -155,6 +155,38 @@ def open_browser():
     time.sleep(2.5)
     webbrowser.open(f"http://{CONFIG['host']}:{CONFIG['port']}")
 
+
+from src.carver import OHLCFileCarver
+from src.timeline_clusterer import TemporalClusterEngine
+from src.binwalk_scanner import MarketSignatureScanner
+from src.bulk_extractor import MarketFeatureExtractor
+from src.volatility_forensics import VolatilityMemoryForensics
+
+# Initialize once at startup
+FORENSICS = {
+    "carver": OHLCFileCarver(),
+    "clusterer": TemporalClusterEngine(),
+    "scanner": MarketSignatureScanner(),
+    "extractor": MarketFeatureExtractor(n_jobs=4),
+    "memory": VolatilityMemoryForensics()
+}
+
+@app.route("/forensic_scan", methods=["POST"])
+def forensic_scan():
+    window_tokens = request.json.get("tokens", "")
+    df_window = request.json.get("df_window", None) # Pass recent OHLC chunk
+    if df_window is None: return jsonify({"error": "Missing data window"}), 400
+    
+    df = pd.DataFrame(df_window)
+    results = {}
+    results["zones"] = FORENSICS["carver"].carve_zones(df)
+    results["clusters"] = FORENSICS["clusterer"].cluster_by_token_sequence(df)
+    results["signatures"] = FORENSICS["scanner"].scan_signatures(df)
+    results["features"] = FORENSICS["extractor"].extract_parallel(df, chunk_size=len(df))
+    results["artifacts"] = [a.__dict__ for a in FORENSICS["memory"].artifacts]
+    
+    return jsonify(results)
+
 if __name__ == "__main__":
     threading.Thread(target=open_browser, daemon=True).start()
     print(" MarketShark Engine Starting...")
