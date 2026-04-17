@@ -1,12 +1,24 @@
 import os
 import sys
 import time
+import logging
 import pandas as pd
 import numpy as np
 from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# --- CONFIG LOGGING ---
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.FileHandler("market_shark.log"),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger("MarketShark")
 
 # Fix import paths for src/ directory
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -19,7 +31,7 @@ try:
     from tokenizer import tokenize_candle
     from broker_bitget import BitgetBroker
 except ImportError as e:
-    print(f" Import Error: {e}")
+    logger.error(f" Import Error: {e}")
     sys.exit(1)
 
 # --- MODULE: MOCK BROKER (THE BRIDGE ENDPOINT) ---
@@ -31,11 +43,11 @@ class MockBroker:
     def __init__(self, balance=10000):
         self.balance = balance
         self.open_trades = []
-        print(f" [BROKER] Initialized with balance: ${balance}")
+        logger.info(f" [BROKER] Initialized with balance: ${balance}")
 
     def submit_order(self, side, size, price, sl, tp, stealth=True):
         order_id = len(self.open_trades) + 1
-        print(f" [BROKER] EXECUTE {side} | Size: {size:.2f} | Price: {price} | SL: {sl} | TP: {tp} | Stealth: {stealth}")
+        logger.info(f" [BROKER] EXECUTE {side} | Size: {size:.2f} | Price: {price} | SL: {sl} | TP: {tp} | Stealth: {stealth}")
         self.open_trades.append({
             "id": order_id,
             "side": side,
@@ -54,18 +66,15 @@ class MS_RiskGate:
         λ-series risk filters (Simplified implementation)
         """
         # λ6: Displacement Veto - Microstructure Conflict
-        # If the candle is strongly bullish but the intent is SELL, veto.
         body = market_data['close'] - market_data['open']
         rng = market_data['high'] - market_data['low']
         body_ratio = abs(body) / (rng if rng > 0 else 0.0001)
         
         dir_actual = "BUY" if body > 0 else "SELL"
         if body_ratio > 0.75 and dir_actual != side:
-            print(f" [RISK] λ6 VETO: Displacement Conflict (Body Ratio: {body_ratio:.2f})")
+            logger.warning(f" [RISK] λ6 VETO: Displacement Conflict (Body Ratio: {body_ratio:.2f})")
             return False 
 
-        # λ1: Phase Entrapment - Volatility check (Placeholder)
-        # In real scenario, use ATR or Volume integral
         return confidence > 0.65 
 
 # --- MODULE: AUTO-TRADE ORCHESTRATOR ---
@@ -80,43 +89,33 @@ class MarketSharkAutoTrader:
         """
         Main loop logic for the bridge.
         """
-        # 1. Tokenize the incoming candle
         token = tokenize_candle(
             ohlcv['open'], ohlcv['high'], ohlcv['low'], ohlcv['close']
         )
-        self.token_history = (self.token_history + token)[-30:] # Keep last 30 tokens
+        self.token_history = (self.token_history + token)[-30:] 
         self.last_price = ohlcv['close']
 
-        print(f" [BRIDGE] New Candle: {token} | Stream: ...{self.token_history[-10:]}")
+        logger.info(f" [BRIDGE] New Candle: {token} | Stream: ...{self.token_history[-10:]}")
 
         if len(self.token_history) < 5:
-            return # Wait for more data
+            return 
 
-        # 2. Query Memory via Vector DB
         matches = query_similar(self.token_history, n_results=5)
         if not matches:
             return
 
         best_match = matches[0]
-        # Calculate Confidence: (WinRate * 0.7) + (Similarity * 0.3)
         confidence = (best_match['win_rate'] * 0.7) + (best_match['similarity'] * 0.3)
-        
-        # Adaptive threshold from reward system
         threshold = get_adaptive_threshold(pattern=best_match['pattern'], base=0.72)
-        
         intent = "BUY" if best_match.get("avg_rr", 0) > 0 else "SELL"
         
-        print(f" [BRIDGE] Match: {best_match['pattern']} | Conf: {confidence:.2f} | Target: {intent} | Thresh: {threshold:.2f}")
+        logger.info(f" [BRIDGE] Match: {best_match['pattern']} | Conf: {confidence:.2f} | Target: {intent} | Thresh: {threshold:.2f}")
 
-        # 3. Apply 7-λ Veto Strategy
         authorized = self.risk.evaluate(ohlcv, confidence, intent)
         
         if authorized and confidence >= threshold:
-            # 4. Stealth Execution
             sl_pips = 8
             tp_pips = 16
-            
-            # SL/TP calculation
             pip_val = 0.0001
             sl_price = ohlcv['close'] - (sl_pips * pip_val) if intent == "BUY" else ohlcv['close'] + (sl_pips * pip_val)
             tp_price = ohlcv['close'] + (tp_pips * pip_val) if intent == "BUY" else ohlcv['close'] - (tp_pips * pip_val)
@@ -132,7 +131,6 @@ class MarketSharkAutoTrader:
                 stealth=True
             )
             
-            # Log initiated trade (as placeholder for later outcome logging)
             log_trade({
                 "pattern": best_match['pattern'],
                 "tokens": self.token_history,
@@ -143,7 +141,6 @@ class MarketSharkAutoTrader:
             })
 
     def _kelly_sizing(self, confidence):
-        # Sizing = Confidence * Stability * 0.02 (2% cap)
         return min(confidence * 0.02, 0.05)
 
 # --- BOOTSTRAP: RUNNING THE BRIDGE ---
@@ -153,47 +150,41 @@ if __name__ == "__main__":
     parser.add_argument("--live", action="store_true", help="Connect to Bitget for live data/execution")
     args = parser.parse_args()
 
-    print("""
-    SHARK BRIDGE ACTIVATED
-    Connecting Token Stream -> Vector DB -> Risk Gate -> Broker
-    """)
+    logger.info("SHARK BRIDGE ACTIVATED (Logging enabled)")
     
     if args.live:
-        print(" [MODE] LIVE BITGET CONNECTION")
-        # In a real scenario, use python-dotenv here
+        logger.info(" [MODE] LIVE BITGET CONNECTION")
         key = os.getenv("BITGET_API_KEY")
-        secret = os.getenv("BITGET_SECRET")
+        secret = os.getenv("BITGET_API_SECRET") or os.getenv("BITGET_SECRET")
         pw = os.getenv("BITGET_PASSPHRASE")
         
         if not key or not secret:
-            print(" [ERROR] Missing Bitget credentials! Set BITGET_API_KEY, BITGET_SECRET, and BITGET_PASSPHRASE.")
+            logger.error(" [ERROR] Missing Bitget credentials!")
             sys.exit(1)
             
-        broker = BitgetBroker(api_key=key, secret=secret, passphrase=pw, is_demo=True)
+        broker = BitgetBroker(api_key=key, secret=secret, passphrase=pw, is_demo=False)
         trader = MarketSharkAutoTrader(broker)
         
         symbol = os.getenv("BITGET_SYMBOL", "BTC/USDT")
         
         while True:
-            print(f"\n [LIVE] Fetching latest {symbol} candle...")
+            logger.info(f" [LIVE] Fetching latest {symbol} candle...")
             df = broker.get_latest_candles(symbol=symbol, timeframe="1m", limit=1)
             if df is not None and not df.empty:
                 trader.process_candle(df.iloc[0].to_dict())
             
-            # Wait for next minute
             time.sleep(60)
     else:
-        print(" [MODE] SIMULATION (CSV)")
+        logger.info(" [MODE] SIMULATION (CSV)")
         broker = MockBroker()
         trader = MarketSharkAutoTrader(broker)
         
-        # Load some sample data to simulate a stream
         csv_path = os.path.join(CURRENT_DIR, "data", "eurusd_1min_tokenized.csv")
         if os.path.exists(csv_path):
-            print(f" [BRIDGE] Simulating live stream from {csv_path}...")
+            logger.info(f" [BRIDGE] Simulating live stream from {csv_path}...")
             df = pd.read_csv(csv_path).tail(50)
             for _, row in df.iterrows():
                 trader.process_candle(row.to_dict())
-                time.sleep(0.1) # Simulate time gap
+                time.sleep(0.1) 
         else:
-            print(" [ERROR] No data found to simulate stream. Please run tokenize_candles.py first.")
+            logger.error(" [ERROR] No data found to simulate stream.")

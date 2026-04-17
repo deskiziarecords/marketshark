@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+
+# Credentials
+.env
+
+# Database & Logs
+market_shark.log
+trade_rewards.db
+chroma_db/
+
+# Packaging
+dist/
+build/
+*.spec
