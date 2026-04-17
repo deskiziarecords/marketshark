@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Python
 __pycache__/
 *.py[cod]
@@ -17,3 +18,11 @@ chroma_db/
 dist/
 build/
 *.spec
+=======
+__pycache__/
+*.pyc
+backend.log
+src/trade_rewards.db
+chroma_db/
+.env
+>>>>>>> f03c1421e7eda7f6f8fcc1731abbb08ca59e06ed
